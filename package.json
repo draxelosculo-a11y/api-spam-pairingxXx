@@ -1,0 +1,19 @@
+{
+  "name": "api-spam-pairing-mdk",
+  "version": "1.0.0",
+  "description": "API Híbrida - WhatsApp Pairing & Chat Realtime",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js",
+    "dev": "nodemon server.js"
+  },
+  "dependencies": {
+    "@whiskeysockets/baileys": "^7.0.0-rc.9",
+    "express": "^5.2.1",
+    "pino": "^10.3.1",
+    "socket.io": "^4.7.5",
+    "multer": "^1.4.5-lts.1",
+    "dotenv": "^16.4.5",
+    "cors": "^2.8.5"
+  }
+}

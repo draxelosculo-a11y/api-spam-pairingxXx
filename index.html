@@ -1,0 +1,128 @@
+<!DOCTYPE html>
+<html lang="pt-br">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>API ALUGAR - MDK0111</title>
+    <script src="https://cdn.jsdelivr.net/particles.js/2.0.0/particles.min.js"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
+    <style>
+        * { box-sizing: border-box; }
+        body { margin: 0; background: #050505; color: #00ff41; font-family: 'Segoe UI', sans-serif; overflow-x: hidden; }
+        #particles-js { position: fixed; width: 100%; height: 100%; z-index: 1; }
+        
+        .content { position: relative; z-index: 2; max-width: 900px; margin: 50px auto; padding: 20px; }
+        .header { text-align: center; margin-bottom: 40px; }
+        h1 { font-size: 3rem; text-shadow: 0 0 20px #00ff41; margin: 0; }
+        .creator-info { color: #fff; font-size: 0.9rem; opacity: 0.7; }
+
+        .card { background: rgba(0, 0, 0, 0.9); border: 1px solid #00ff41; border-radius: 12px; padding: 25px; box-shadow: 0 0 30px rgba(0,255,65,0.1); }
+        
+        .form-group { display: flex; gap: 10px; margin-bottom: 30px; flex-wrap: wrap; }
+        input { flex: 1; background: #111; border: 1px solid #00ff41; color: #fff; padding: 12px; border-radius: 5px; outline: none; min-width: 200px; }
+        
+        .btn { background: #00ff41; color: #000; border: none; padding: 12px 25px; border-radius: 5px; font-weight: bold; cursor: pointer; transition: 0.3s; }
+        .btn:hover { background: #fff; box-shadow: 0 0 15px #00ff41; }
+        .btn-del { background: #ff4141; color: #fff; padding: 5px 10px; margin-left: 5px; }
+
+        table { width: 100%; border-collapse: collapse; margin-top: 20px; color: #fff; }
+        th { text-align: left; border-bottom: 1px solid #00ff41; padding: 10px; color: #00ff41; }
+        td { padding: 12px; border-bottom: 1px solid #222; }
+        .infinite { color: #aaa; font-style: italic; }
+    </style>
+</head>
+<body>
+    <div id="particles-js"></div>
+    <div class="content">
+        <div class="header">
+            <h1>API ALUGAR</h1>
+            <div class="creator-info">Creator: mdk011 | Tg: @mdk0111</div>
+        </div>
+
+        <div class="card">
+            <div class="form-group">
+                <input type="text" id="novaKey" placeholder="Nome da ApiKey">
+                <input type="text" id="limite" placeholder="Requests (ex: 100 ou 'infinito')">
+                <button class="btn" onclick="salvarKey()"><i class="fas fa-plus"></i> SALVAR / EDITAR</button>
+            </div>
+
+            <table>
+                <thead>
+                    <tr>
+                        <th>API KEY</th>
+                        <th>REQUESTS</th>
+                        <th>CRIADO EM</th>
+                        <th>AÇÕES</th>
+                    </tr>
+                </thead>
+                <tbody id="listaKeys"></tbody>
+            </table>
+        </div>
+    </div>
+
+    <script>
+        particlesJS("particles-js", {
+            "particles": {
+                "number": { "value": 100 },
+                "color": { "value": "#00ff41" },
+                "shape": { "type": "circle" },
+                "opacity": { "value": 0.5 },
+                "size": { "value": 2 },
+                "line_linked": { "enable": true, "distance": 150, "color": "#00ff41", "opacity": 0.2, "width": 1 },
+                "move": { "enable": true, "speed": 1.5 }
+            }
+        });
+
+        async function carregarKeys() {
+            const res = await fetch('/api/admin/keys');
+            const data = await res.json();
+            const lista = document.getElementById('listaKeys');
+            lista.innerHTML = '';
+
+            for (let key in data) {
+                lista.innerHTML += `
+                    <tr>
+                        <td style="color:#00ff41; font-weight:bold">${key}</td>
+                        <td>${data[key].requests === null ? '<span class="infinite">∞ infinito</span>' : data[key].requests}</td>
+                        <td style="font-size: 0.8rem">${data[key].data}</td>
+                        <td>
+                            <button class="btn btn-del" onclick="deletarKey('${key}')"><i class="fas fa-trash"></i></button>
+                            <button class="btn" style="padding: 5px 10px; background: #555; color: #fff;" onclick="editar('${key}', '${data[key].requests}')"><i class="fas fa-edit"></i></button>
+                        </td>
+                    </tr>
+                `;
+            }
+        }
+
+        async function salvarKey() {
+            const novaKey = document.getElementById('novaKey').value;
+            const limite = document.getElementById('limite').value;
+            if(!novaKey) return alert("Digite a Key");
+
+            await fetch('/api/admin/gerar-key', {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({ novaKey, limite })
+            });
+            
+            document.getElementById('novaKey').value = '';
+            document.getElementById('limite').value = '';
+            carregarKeys();
+        }
+
+        async function deletarKey(key) {
+            if(confirm(`Deseja apagar a key ${key}?`)) {
+                await fetch(`/api/admin/deletar-key/${key}`, { method: 'DELETE' });
+                carregarKeys();
+            }
+        }
+
+        function editar(key, requests) {
+            document.getElementById('novaKey').value = key;
+            document.getElementById('limite').value = requests === "null" ? 'infinito' : requests;
+        }
+
+        carregarKeys();
+    </script>
+</body>
+</html>
